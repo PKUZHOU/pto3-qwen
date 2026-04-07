@@ -6,6 +6,7 @@
 	path = simpler
 	url = https://github.com/PKUZHOU/simpler.git
 	branch = qwen_dist_dev
+	ignore = untracked
 [submodule "pto-isa"]
 	path = pto-isa
 	url = https://github.com/PKUZHOU/pto-isa.git
