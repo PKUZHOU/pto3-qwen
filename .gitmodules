@@ -1,0 +1,20 @@
+[submodule "PTOAS"]
+	path = PTOAS
+	url = https://github.com/PKUZHOU/PTOAS.git
+	branch = qwen_dist_dev
+[submodule "simpler"]
+	path = simpler
+	url = https://github.com/PKUZHOU/simpler.git
+	branch = qwen_dist_dev
+[submodule "pto-isa"]
+	path = pto-isa
+	url = https://github.com/PKUZHOU/pto-isa.git
+	branch = qwen_dist_dev
+[submodule "pypto-lib"]
+	path = pypto-lib
+	url = https://github.com/PKUZHOU/pypto-lib.git
+	branch = qwen_dist_dev
+[submodule "pypto"]
+	path = pypto
+	url = https://github.com/PKUZHOU/pypto.git
+	branch = qwen_dist_dev
