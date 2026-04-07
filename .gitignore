@@ -1,4 +1,5 @@
 /.codex
 /.local/
 /build_output/
+/llvm19-install/
 /set_env.sh

@@ -2,7 +2,7 @@
 
 ## 1. 范围与结论
 
-本文基于当前 superproject 工作区，对 5 个核心子仓库的 `qwen_dist_dev` 分支做了横向梳理，并对照 [docs/simpler_distributed_runtime_design.md](/home/ntlab/zhouzhe/pypto3.0/docs/simpler_distributed_runtime_design.md) 评估实现覆盖度。
+本文基于当前 superproject 工作区，对 5 个核心子仓库的 `qwen_dist_dev` 分支做了横向梳理，并对照 [docs/simpler_distributed_runtime_design.md](simpler_distributed_runtime_design.md) 评估实现覆盖度。
 
 本次结论先写在前面：
 
@@ -55,7 +55,7 @@
 
 #### 3.3.1 声明式分布式元数据
 
-在 [pypto/python/pypto/language/distributed.py](/home/ntlab/zhouzhe/pypto3.0/pypto/python/pypto/language/distributed.py) 中新增了：
+在 [pypto/python/pypto/language/distributed.py](../pypto/python/pypto/language/distributed.py) 中新增了：
 
 - `BufferAttr`：描述 buffer 的分布式放置属性，例如 `placement="window"` 和 `data_prefix_elems`。
 - `PhaseArg` / `tensor_arg()` / `scalar_arg()`：描述 phase 入口参数的类型。
@@ -64,11 +64,11 @@
 - `DistributedRuntime`：记录 phase 执行所需 runtime 选择和环境变量。
 - `DistributedProgram`：把 phase、buffer、输入输出、runtime 配置等统一挂到 `@pl.program` 上。
 
-在 [pypto/python/pypto/language/parser/decorator.py](/home/ntlab/zhouzhe/pypto3.0/pypto/python/pypto/language/parser/decorator.py) 中，`@pl.program` 已经会自动读取类属性 `DISTRIBUTED`，并在生成 IR Program 后注册这份 distributed metadata。也就是说，分布式信息已经进入了 PyPTO 的程序级编译入口，而不是 example 外挂脚本。
+在 [pypto/python/pypto/language/parser/decorator.py](../pypto/python/pypto/language/parser/decorator.py) 中，`@pl.program` 已经会自动读取类属性 `DISTRIBUTED`，并在生成 IR Program 后注册这份 distributed metadata。也就是说，分布式信息已经进入了 PyPTO 的程序级编译入口，而不是 example 外挂脚本。
 
 #### 3.3.2 编译期 distributed codegen
 
-在 [pypto/python/pypto/backend/pto_backend.py](/home/ntlab/zhouzhe/pypto3.0/pypto/python/pypto/backend/pto_backend.py) 中，分布式 codegen 已经具备以下能力：
+在 [pypto/python/pypto/backend/pto_backend.py](../pypto/python/pypto/backend/pto_backend.py) 中，分布式 codegen 已经具备以下能力：
 
 - 将 `DistributedProgram` 序列化为 `kernel_config.py` 中的 `DISTRIBUTED_SPEC`。
 - 将 `DistributedLocalPhase` 自动降成 phase orchestration C++ 代码。
@@ -87,7 +87,7 @@
 
 #### 3.3.3 运行期接入 `simpler` 分布式 runner
 
-在 [pypto/python/pypto/runtime/runner.py](/home/ntlab/zhouzhe/pypto3.0/pypto/python/pypto/runtime/runner.py) 中，`RunConfig` 新增了多卡运行相关参数：
+在 [pypto/python/pypto/runtime/runner.py](../pypto/python/pypto/runtime/runner.py) 中，`RunConfig` 新增了多卡运行相关参数：
 
 - `nranks`
 - `root`
@@ -107,12 +107,12 @@
 
 #### 3.3.4 分布式输入/输出与 golden 适配
 
-在 [pypto/python/pypto/runtime/tensor_spec.py](/home/ntlab/zhouzhe/pypto3.0/pypto/python/pypto/runtime/tensor_spec.py) 中：
+在 [pypto/python/pypto/runtime/tensor_spec.py](../pypto/python/pypto/runtime/tensor_spec.py) 中：
 
 - `TensorSpec` 新增 `placement`；
 - 初始化 callable 可以感知 `rank` / `nranks` / `root`。
 
-在 [pypto/python/pypto/runtime/golden_writer.py](/home/ntlab/zhouzhe/pypto3.0/pypto/python/pypto/runtime/golden_writer.py) 中：
+在 [pypto/python/pypto/runtime/golden_writer.py](../pypto/python/pypto/runtime/golden_writer.py) 中：
 
 - distributed 模式下会生成 `generate_distributed_inputs(rank, nranks, root, ...)`；
 - `generate_inputs(params)` 会作为兼容包装层退化到 rank-aware 初始化。
@@ -136,8 +136,8 @@
 
 关键文件：
 
-- [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](/home/ntlab/zhouzhe/pypto3.0/pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
-- [pypto-lib/docs/tp_ffn_multicard_hw_delivery.md](/home/ntlab/zhouzhe/pypto3.0/pypto-lib/docs/tp_ffn_multicard_hw_delivery.md)
+- [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](../pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
+- [pypto-lib/docs/tp_ffn_multicard_hw_delivery.md](../pypto-lib/docs/tp_ffn_multicard_hw_delivery.md)
 
 #### 3.4.1 TP FFN example 改成声明式 distributed program
 
@@ -181,9 +181,9 @@
 
 关键文件：
 
-- [simpler/examples/scripts/distributed_code_runner.py](/home/ntlab/zhouzhe/pypto3.0/simpler/examples/scripts/distributed_code_runner.py)
-- [simpler/examples/scripts/distributed_worker.py](/home/ntlab/zhouzhe/pypto3.0/simpler/examples/scripts/distributed_worker.py)
-- [simpler/python/bindings.py](/home/ntlab/zhouzhe/pypto3.0/simpler/python/bindings.py)
+- [simpler/examples/scripts/distributed_code_runner.py](../simpler/examples/scripts/distributed_code_runner.py)
+- [simpler/examples/scripts/distributed_worker.py](../simpler/examples/scripts/distributed_worker.py)
+- [simpler/python/bindings.py](../simpler/python/bindings.py)
 
 已经实现的能力：
 
@@ -216,9 +216,9 @@
 
 关键文件：
 
-- [simpler/src/a2a3/platform/include/host/comm.h](/home/ntlab/zhouzhe/pypto3.0/simpler/src/a2a3/platform/include/host/comm.h)
-- [simpler/src/a2a3/platform/onboard/host/comm_hccl.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/a2a3/platform/onboard/host/comm_hccl.cpp)
-- [simpler/src/a2a3/platform/sim/host/comm_sim.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/a2a3/platform/sim/host/comm_sim.cpp)
+- [simpler/src/a2a3/platform/include/host/comm.h](../simpler/src/a2a3/platform/include/host/comm.h)
+- [simpler/src/a2a3/platform/onboard/host/comm_hccl.cpp](../simpler/src/a2a3/platform/onboard/host/comm_hccl.cpp)
+- [simpler/src/a2a3/platform/sim/host/comm_sim.cpp](../simpler/src/a2a3/platform/sim/host/comm_sim.cpp)
 - 对应的 `a5` 平台也已有同构实现
 
 统一 Host 通信 API 已实现：
@@ -256,13 +256,13 @@
 以下流程图对应已经实测打通的实机命令：
 
 ```bash
-source /home/ntlab/zhouzhe/pypto3.0/set_env.sh
-source /home/ntlab/zhouzhe/pypto3.0/superproject_env.sh
+source ./set_env.sh
+source ./superproject_env.sh
 python3 pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py \
   -p a2a3 \
   --nranks 4 \
   --devices 4,5,6,7 \
-  --work-dir /tmp/qwen_dist_hw_smoke
+  --work-dir build_output/qwen_dist_hw_smoke
 ```
 
 ```mermaid
@@ -309,23 +309,23 @@ flowchart TD
 
 这张图对应的关键代码位置如下：
 
-- 顶层入口与 `RunConfig` 组装： [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](/home/ntlab/zhouzhe/pypto3.0/pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
-- distributed phase 与 buffer placement 定义： [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](/home/ntlab/zhouzhe/pypto3.0/pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
-- `pypto.runtime.run()` 到 `_execute_distributed()` 主链路： [pypto/python/pypto/runtime/runner.py](/home/ntlab/zhouzhe/pypto3.0/pypto/python/pypto/runtime/runner.py)
-- 多卡编译、拉起 worker、汇总日志、golden 校验： [simpler/examples/scripts/distributed_code_runner.py](/home/ntlab/zhouzhe/pypto3.0/simpler/examples/scripts/distributed_code_runner.py)
-- 每个 rank 的通信初始化、buffer 分配、phase 执行、输出保存： [simpler/examples/scripts/distributed_worker.py](/home/ntlab/zhouzhe/pypto3.0/simpler/examples/scripts/distributed_worker.py)
+- 顶层入口与 `RunConfig` 组装： [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](../pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
+- distributed phase 与 buffer placement 定义： [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](../pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
+- `pypto.runtime.run()` 到 `_execute_distributed()` 主链路： [pypto/python/pypto/runtime/runner.py](../pypto/python/pypto/runtime/runner.py)
+- 多卡编译、拉起 worker、汇总日志、golden 校验： [simpler/examples/scripts/distributed_code_runner.py](../simpler/examples/scripts/distributed_code_runner.py)
+- 每个 rank 的通信初始化、buffer 分配、phase 执行、输出保存： [simpler/examples/scripts/distributed_worker.py](../simpler/examples/scripts/distributed_worker.py)
 
 #### 3.5.4 `HostWorker / DistWorker` 新 runtime
 
 关键文件：
 
-- [simpler/src/common/distributed/dist_worker.h](/home/ntlab/zhouzhe/pypto3.0/simpler/src/common/distributed/dist_worker.h)
-- [simpler/src/common/distributed/dist_orchestrator.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/common/distributed/dist_orchestrator.cpp)
-- [simpler/src/common/distributed/dist_scheduler.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/common/distributed/dist_scheduler.cpp)
-- [simpler/src/common/distributed/dist_sub_worker.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/common/distributed/dist_sub_worker.cpp)
-- [simpler/python/host_worker/host_worker.py](/home/ntlab/zhouzhe/pypto3.0/simpler/python/host_worker/host_worker.py)
-- [simpler/python/worker.py](/home/ntlab/zhouzhe/pypto3.0/simpler/python/worker.py)
-- [simpler/python/bindings/dist_worker_bind.h](/home/ntlab/zhouzhe/pypto3.0/simpler/python/bindings/dist_worker_bind.h)
+- [simpler/src/common/distributed/dist_worker.h](../simpler/src/common/distributed/dist_worker.h)
+- [simpler/src/common/distributed/dist_orchestrator.cpp](../simpler/src/common/distributed/dist_orchestrator.cpp)
+- [simpler/src/common/distributed/dist_scheduler.cpp](../simpler/src/common/distributed/dist_scheduler.cpp)
+- [simpler/src/common/distributed/dist_sub_worker.cpp](../simpler/src/common/distributed/dist_sub_worker.cpp)
+- [simpler/python/host_worker/host_worker.py](../simpler/python/host_worker/host_worker.py)
+- [simpler/python/worker.py](../simpler/python/worker.py)
+- [simpler/python/bindings/dist_worker_bind.h](../simpler/python/bindings/dist_worker_bind.h)
 
 这套 runtime 已经实现的核心能力包括：
 
@@ -345,10 +345,10 @@ flowchart TD
 
 TP FFN 跑通还依赖了 `aicpu_build_graph` runtime 侧的补丁，关键文件包括：
 
-- [simpler/src/a2a3/runtime/aicpu_build_graph/runtime/runtime.h](/home/ntlab/zhouzhe/pypto3.0/simpler/src/a2a3/runtime/aicpu_build_graph/runtime/runtime.h)
-- [simpler/src/a2a3/runtime/aicpu_build_graph/runtime/runtime.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/a2a3/runtime/aicpu_build_graph/runtime/runtime.cpp)
-- [simpler/src/a2a3/runtime/aicpu_build_graph/host/runtime_maker.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/a2a3/runtime/aicpu_build_graph/host/runtime_maker.cpp)
-- [simpler/src/a2a3/runtime/aicpu_build_graph/aicpu/aicpu_executor.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/a2a3/runtime/aicpu_build_graph/aicpu/aicpu_executor.cpp)
+- [simpler/src/a2a3/runtime/aicpu_build_graph/runtime/runtime.h](../simpler/src/a2a3/runtime/aicpu_build_graph/runtime/runtime.h)
+- [simpler/src/a2a3/runtime/aicpu_build_graph/runtime/runtime.cpp](../simpler/src/a2a3/runtime/aicpu_build_graph/runtime/runtime.cpp)
+- [simpler/src/a2a3/runtime/aicpu_build_graph/host/runtime_maker.cpp](../simpler/src/a2a3/runtime/aicpu_build_graph/host/runtime_maker.cpp)
+- [simpler/src/a2a3/runtime/aicpu_build_graph/aicpu/aicpu_executor.cpp](../simpler/src/a2a3/runtime/aicpu_build_graph/aicpu/aicpu_executor.cpp)
 
 这部分主要解决：
 
@@ -453,7 +453,7 @@ PyPTO 已经能自动生成：
 
 当前 PyPTO 顶层多卡执行的实际链路是：
 
-1. 用户运行 [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](/home/ntlab/zhouzhe/pypto3.0/pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
+1. 用户运行 [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](../pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
 2. `pypto.runtime.run()` 编译程序并补 `DISTRIBUTED_CONFIG`
 3. `_execute_distributed()` 调用 `simpler` 的 `DistributedCodeRunner`
 4. `DistributedCodeRunner` 编译产物、准备 per-rank 输入、起多个 `distributed_worker.py`
@@ -478,7 +478,7 @@ PyPTO 已经能自动生成：
 - `DistTensorMap`
 - `DistScope`
 
-它更接近 [docs/simpler_distributed_runtime_design.md](/home/ntlab/zhouzhe/pypto3.0/docs/simpler_distributed_runtime_design.md) 描述的 L3 runtime。
+它更接近 [docs/simpler_distributed_runtime_design.md](simpler_distributed_runtime_design.md) 描述的 L3 runtime。
 
 但当前 PyPTO 顶层 distributed `run()` 还没有直接走这条线，而是仍然走前面的 phase-runner 主路径。
 
@@ -535,8 +535,8 @@ PyPTO 已经能自动生成：
 
 | 设计项 | 当前状态 | 证据 |
 |---|---|---|
-| `Worker(level=4, ...)` / L4 递归组合 | 未实现 | [simpler/python/worker.py](/home/ntlab/zhouzhe/pypto3.0/simpler/python/worker.py) 当前只支持 level 2 和 level 3 |
-| DistWorker 作为高层子 worker 真正执行 `run(payload)` | 未实现 | [simpler/src/common/distributed/dist_worker.cpp](/home/ntlab/zhouzhe/pypto3.0/simpler/src/common/distributed/dist_worker.cpp) 中 `DistWorker::run()` 还是 placeholder |
+| `Worker(level=4, ...)` / L4 递归组合 | 未实现 | [simpler/python/worker.py](../simpler/python/worker.py) 当前只支持 level 2 和 level 3 |
+| DistWorker 作为高层子 worker 真正执行 `run(payload)` | 未实现 | [simpler/src/common/distributed/dist_worker.cpp](../simpler/src/common/distributed/dist_worker.cpp) 中 `DistWorker::run()` 还是 placeholder |
 | HostSubWorker 完整 mailbox 协议（args shm fd / offset / result addr / error msg） | 未实现 | 当前 mailbox 只覆盖 state / callable_id / error_code，和设计稿 256B 完整协议不一致 |
 | 基于 DistWorker 的 L4+/多机扩展 | 未实现 | 代码里没有多 host 递归调度落地 |
 | PyPTO 默认多卡执行切换到 HostWorker/DistWorker | 未实现 | `pypto.runtime.run()` 仍然走 `DistributedCodeRunner` |
@@ -562,7 +562,7 @@ PyPTO 已经能自动生成：
 - SubWorker x M
 - host-side orch/scope/ring/tensormap
 
-但当前 [simpler/python/host_worker/host_worker.py](/home/ntlab/zhouzhe/pypto3.0/simpler/python/host_worker/host_worker.py) 只接 `num_sub_workers`，没有把 chip worker 作为这个类的稳定外部接口暴露出来。
+但当前 [simpler/python/host_worker/host_worker.py](../simpler/python/host_worker/host_worker.py) 只接 `num_sub_workers`，没有把 chip worker 作为这个类的稳定外部接口暴露出来。
 
 也就是说，`HostWorker` 这层目前仍偏 POC/中间态。
 
@@ -637,7 +637,7 @@ PyPTO 已经能自动生成：
 
 如果只看“有没有为分布式支持做出系统性实现”，答案是明确的：**有，而且已经跨 `pypto`、`pypto-lib`、`simpler` 三层形成了一条真实可运行链路。**
 
-但如果按 [docs/simpler_distributed_runtime_design.md](/home/ntlab/zhouzhe/pypto3.0/docs/simpler_distributed_runtime_design.md) 的目标形态来打分，则更准确的判断是：
+但如果按 [docs/simpler_distributed_runtime_design.md](simpler_distributed_runtime_design.md) 的目标形态来打分，则更准确的判断是：
 
 - phase-runner 路径：已经可用，并完成了 TP FFN 的端到端验证；
 - L3 `HostWorker/DistWorker`：已经完成核心骨架与关键机制，但还未成为默认主路径；
