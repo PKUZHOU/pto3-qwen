@@ -10,7 +10,7 @@
 - `PTOAS` 和 `pto-isa` 当前 `qwen_dist_dev` 相对各自主线没有额外代码改动，更多是被上层实现直接复用，而不是本分支新增能力。
 - 当前已经打通的一条用户可用链路是：
   `pypto-lib` example -> `pypto.runtime.run()` -> `simpler` 的 `DistributedCodeRunner` / `distributed_worker.py` -> `comm_*` 通信后端 -> 多卡执行 -> golden 校验。
-- `simpler_distributed_runtime_design.md` 里设计的 `HostWorker / DistWorker` L3 runtime 也已经落了一套独立实现，但它和当前 PyPTO 顶层默认使用的多卡执行路径还没有完全合并成同一条主线。
+- `simpler_distributed_runtime_design.md` 里设计的 `HostWorker / DistWorker` L3 runtime 也已经落了一套独立实现；当前 PyPTO 顶层默认走的是本次已经打通的 `DistributedCodeRunner + distributed_worker.py` 路径，而不是直接走 `HostWorker / DistWorker`，所以两者还没有统一成同一条主线。
 
 ## 2. 对比基线
 
@@ -128,7 +128,7 @@
 - 多卡 runner 接入顶层 `run()`。
 - per-rank 初始化与 golden 校验接入。
 
-还没有完成的是：`pypto` 还没有把多卡执行直接切到 `HostWorker / DistWorker` 这套新 runtime，而是接到了 `DistributedCodeRunner` 这条 phase-runner 主线上。
+还没有完成的是：`pypto` 顶层虽然已经具备多卡执行能力，但当前默认接入的是 `DistributedCodeRunner` 这条 phase-runner 主线，还没有直接切到 `HostWorker / DistWorker` 这套 L3 runtime。
 
 ### 3.4 `pypto-lib`
 
@@ -168,12 +168,12 @@
 
 ### 3.5 `simpler`
 
-`simpler` 是本次分布式支持最重的实现仓库，但实际落地里可以分成两条线看：
+`simpler` 是本次分布式支持最重的实现仓库，但当前实现里实际上并行存在两条线：
 
-1. 当前已经被 `pypto.runtime.run()` 直接使用的 phase-runner 路径；
-2. 按设计文档落地的 `HostWorker / DistWorker` 新 runtime 路径。
+1. 当前已经被 `pypto.runtime.run()` 直接使用、且已经随 TP FFN 顶层入口跑通的 phase-runner 路径；
+2. 按设计文档落地、但尚未接入 `pypto.runtime.run()` 默认执行链路的 `HostWorker / DistWorker` 新 runtime 路径。
 
-这两条线都已经有代码，但集成成熟度不同。
+这两条线都已经有代码，但抽象层级、调度模型和当前集成位置并不相同。
 
 #### 3.5.1 phase-runner 主路径：`DistributedCodeRunner` + `distributed_worker.py`
 
@@ -250,6 +250,70 @@
 - phase1 更适合传真实 tensor 语义；
 - phase2 的内建 allreduce orchestration 当前按“设备指针 + 标量参数”工作；
 - runner 必须知道哪些参数要转成 `ContinuousTensor`，哪些应当直接当 scalar / pointer 传入。
+
+#### 3.5.3.1 TP FFN 实机命令对应的底层执行流程图
+
+以下流程图对应已经实测打通的实机命令：
+
+```bash
+source /home/ntlab/zhouzhe/pypto3.0/set_env.sh
+source /home/ntlab/zhouzhe/pypto3.0/superproject_env.sh
+python3 pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py \
+  -p a2a3 \
+  --nranks 4 \
+  --devices 4,5,6,7 \
+  --work-dir /tmp/qwen_dist_hw_smoke
+```
+
+```mermaid
+flowchart TD
+    A["用户命令<br/>tp_ffn_quickgelu.py -p a2a3 --nranks 4 --devices 4,5,6,7"] --> B["compile_and_run()"]
+    B --> C["pypto.runtime.run()"]
+
+    C --> D["compile_program()<br/>生成 kernels / orchestration / kernel_config.py"]
+    D --> E["DistributedProgram 生效<br/>phase1 = local FFN<br/>phase2 = allreduce<br/>partial_out=window<br/>output=device"]
+    E --> F["write_golden()<br/>生成 rank-aware golden.py"]
+    F --> G["_execute_distributed()"]
+    G --> H["DistributedCodeRunner.run_all()"]
+
+    H --> I["compile()<br/>编 runtime / orchestration / kernels"]
+    I --> J["prepare_data()<br/>为 rank0..3 落盘 x.bin / w1_local.bin / w2_local.bin"]
+    J --> K["run()<br/>拉起 4 个 distributed_worker.py<br/>分别绑定 device 4,5,6,7"]
+
+    subgraph W["每个 rank worker 的执行流程"]
+        W1["bind_host_binary(libhost_runtime.so)"] --> W2["comm_init(rank, nranks, device_id, rootinfo)"]
+        W2 --> W3["comm_alloc_windows()<br/>建立本 rank window"]
+        W3 --> W4["分配 buffer<br/>window: partial_out<br/>device: x / w1_local / w2_local / output"]
+        W4 --> W5["copy_to_device()<br/>加载本 rank 输入"]
+        W5 --> W6["comm_barrier()"]
+        W6 --> P1["phase1: aicpu_orchestration_phase1"]
+        P1 --> P1A["cast_input_bf16 -> matmul_gate -> quick_gelu -> cast_activated_bf16 -> matmul_down"]
+        P1A --> P1B["partial_out 写入本 rank window"]
+        P1B --> W7["comm_barrier()<br/>phase2 前 host barrier"]
+        W7 --> P2["phase2: aicpu_orchestration_phase2"]
+        P2 --> P2A["tp_ffn_allreduce"]
+        P2A --> P2B["读取所有 rank 的 partial_out(window)<br/>本地累加后写 output(device)"]
+        P2B --> W8["comm_barrier()"]
+        W8 --> W9["copy_from_device()<br/>保存 output.bin"]
+        W9 --> W10["comm_destroy() + 进程退出"]
+    end
+
+    K --> W
+    W --> L["DistributedCodeRunner 汇总 rank 日志"]
+    L --> M["=== ALL 4 RANKS COMPLETED ==="]
+    M --> N["verify()<br/>读取每个 rank output.bin"]
+    N --> O["golden.compute_golden()<br/>重建 sum_r QuickGELU(x@w1_r)@w2_r"]
+    O --> P["torch.allclose 比较"]
+    P --> Q["=== VERIFICATION PASSED ==="]
+```
+
+这张图对应的关键代码位置如下：
+
+- 顶层入口与 `RunConfig` 组装： [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](/home/ntlab/zhouzhe/pypto3.0/pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
+- distributed phase 与 buffer placement 定义： [pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py](/home/ntlab/zhouzhe/pypto3.0/pypto-lib/examples/models/distributed/tp_ffn_quickgelu.py)
+- `pypto.runtime.run()` 到 `_execute_distributed()` 主链路： [pypto/python/pypto/runtime/runner.py](/home/ntlab/zhouzhe/pypto3.0/pypto/python/pypto/runtime/runner.py)
+- 多卡编译、拉起 worker、汇总日志、golden 校验： [simpler/examples/scripts/distributed_code_runner.py](/home/ntlab/zhouzhe/pypto3.0/simpler/examples/scripts/distributed_code_runner.py)
+- 每个 rank 的通信初始化、buffer 分配、phase 执行、输出保存： [simpler/examples/scripts/distributed_worker.py](/home/ntlab/zhouzhe/pypto3.0/simpler/examples/scripts/distributed_worker.py)
 
 #### 3.5.4 `HostWorker / DistWorker` 新 runtime
 
@@ -366,7 +430,7 @@ PyPTO 已经能自动生成：
 
 ### 4.7 L3 `HostWorker / DistWorker` runtime skeleton
 
-虽然它还不是顶层默认路径，但已经具备：
+虽然它还不是 PyPTO 顶层默认执行后端，但已经具备：
 
 - task submit；
 - tensormap 依赖推断；
@@ -383,7 +447,7 @@ PyPTO 已经能自动生成：
 
 ## 5. 当前系统的真实主路径
 
-结合当前代码，实际最重要的一点是：**“已经跑通的用户主路径”和“正在实现的设计目标 runtime”并不是完全同一条链路。**
+结合当前代码，实际最重要的一点是：**“已经跑通的用户主路径”和“按设计稿推进的通用 L3 runtime”不是同一条执行链。**
 
 ### 5.1 当前已跑通主路径
 
@@ -401,7 +465,7 @@ PyPTO 已经能自动生成：
    - 保存输出
 6. `DistributedCodeRunner.verify()` 做多 rank golden 校验
 
-这是一条 phase-runner 路径。
+这是一条已经打通并被 PyPTO 顶层默认使用的 phase-runner 路径。
 
 ### 5.2 当前并行存在但尚未并入主路径的能力
 
@@ -416,7 +480,26 @@ PyPTO 已经能自动生成：
 
 它更接近 [docs/simpler_distributed_runtime_design.md](/home/ntlab/zhouzhe/pypto3.0/docs/simpler_distributed_runtime_design.md) 描述的 L3 runtime。
 
-但当前 PyPTO 顶层 distributed `run()` 还没有直接走这条线。
+但当前 PyPTO 顶层 distributed `run()` 还没有直接走这条线，而是仍然走前面的 phase-runner 主路径。
+
+### 5.3 这两条路径的区别
+
+虽然两条路径都服务于“分布式执行”，但它们并不是同一层抽象上的重复实现。
+
+| 维度 | phase-runner 主路径 | `HostWorker / DistWorker` 路径 |
+|---|---|---|
+| 当前入口 | `pypto.runtime.run()` -> `_execute_distributed()` -> `DistributedCodeRunner.run_all()` | `Worker(level=3)` / `HostWorker` / `DistWorker` |
+| 面向对象 | 一个已经编译完成的 distributed example / job | 一个通用分布式任务运行时 |
+| 核心执行单元 | per-rank Python worker 进程 + `ChipWorker.run()` | `DistWorker` + `DistScheduler` + `ChipWorker` / `DistSubWorker` |
+| 调度模型 | 显式 phase 顺序执行，phase 间 host barrier | 运行时 DAG 调度，按输入输出依赖自动推断 ready/fanin/fanout |
+| 依赖表达 | `DISTRIBUTED_CONFIG`、phase 列表、`window/device` buffer placement | `submit(inputs=[...], outputs=[...])` + `TensorMap` + `Scope` |
+| 当前与 PyPTO 集成状态 | 已接入，且 TP FFN 顶层实机/仿真已验证 | 已有代码和测试，但还不是 PyPTO 顶层默认执行后端 |
+
+因此，当前系统不是“两套都在跑同一件事”，而是：
+
+- `DistributedCodeRunner + distributed_worker.py` 负责把当前 distributed program 真正跑起来。
+- `HostWorker / DistWorker` 代表另一套更通用、更接近设计稿目标的 L3 task runtime。
+- 两者未来可以收敛，但今天还没有统一。
 
 ## 6. 对照设计文档：哪些已经实现，哪些还没实现
 
@@ -466,8 +549,8 @@ PyPTO 已经能自动生成：
 
 这意味着：
 
-- 设计稿里的 L3 runtime 已经有代码，但还不是系统默认事实标准。
-- 用户层目前得到的是“好用的 phase-runner”，不是“统一 worker tree runtime”。
+- 设计稿里的 L3 runtime 已经有代码，但还不是当前产品主路径。
+- 用户层目前默认得到的是“顶层可直接调用的 phase-runner”，不是“统一 worker tree runtime”。
 
 这不是坏事，但文档上必须明确，不然容易把“设计实现了”和“产品主路径用了”混为一谈。
 
@@ -513,7 +596,7 @@ PyPTO 已经能自动生成：
 
 为了避免后续继续讨论时目标漂移，我建议把当前边界明确成下面这句话：
 
-> 当前 `qwen_dist_dev` 已经完成的是“PyPTO 顶层可声明 distributed program，并通过 Simpler phase-runner 在多卡上执行并校验”；同时在 `simpler` 内部已经实现了一套 L3 `HostWorker/DistWorker` 调度骨架，但它还没有完全取代当前 phase-runner 主路径，也还没有扩展到 L4+。
+> 当前 `qwen_dist_dev` 已经完成的是“PyPTO 顶层可声明 distributed program，并通过 Simpler 的 `DistributedCodeRunner + distributed_worker.py` phase-runner 主路径在多卡上执行并校验”；同时在 `simpler` 内部已经实现了一套 L3 `HostWorker/DistWorker` 调度骨架，但它目前还没有接入 PyPTO 顶层默认执行链路，也还没有扩展到 L4+。
 
 这个表述基本符合当前代码事实。
 
