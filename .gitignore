@@ -1,4 +1,6 @@
 /.codex
+/.gh-local/
+/.agents/personal/
 /.local/
 /build_output/
 /llvm19-install/
